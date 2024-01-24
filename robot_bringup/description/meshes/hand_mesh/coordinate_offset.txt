@@ -1,0 +1,41 @@
+tool---UR5
+  Delta Y: 26.50mm  
+tool---finger_root_link_1 
+  Delta X: 46.80mm 
+  Delta Y: 15.00mm 
+  Delta Z: 0.00mm
+
+tool---finger_root_link_2
+  Delta X: 0.00mm 
+  Delta Y: 15.00mm 
+  Delta Z: 0.00mm 
+
+tool---finger_rool_link_3
+  Delta X: 46.80mm 
+  Delta Y: 15.00mm 
+  Delta Z: 0.00mm
+
+tool---realsense
+  Delta X: 5.71mm 
+  Delta Y: 8.59mm 
+  Delta Z: 69.61mm
+  Rotation: 40бу
+
+finger_root_link---palm_link
+  Delta X: 0.00000mm 
+  Delta Y: 146.70000mm 
+  Delta Z: 0.00115mm 
+
+palm_link---proximal_phalanx_link
+  Delta X: 0.00000mm 
+  Delta Y: 0.00000mm 
+  Delta Z: 19.78000mm 
+
+proximal_phalanx_link---middle_phalanx_link
+  Delta X: 0.00000mm 
+  Delta Y: 0.00000mm 
+  Delta Z: 40.00000mm
+middle_phalanx_link---distal_phalanx_link
+  Delta X: 0.00000mm 
+  Delta Y: 0.00000mm 
+  Delta Z: 40.00000mm 

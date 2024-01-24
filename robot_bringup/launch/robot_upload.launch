@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="gripper" default="none"/>
+
+  <param name="robot_description" textfile="$(find robot_bringup)/description/robot/robot_with_$(arg gripper).urdf"/>
+  <include file="$(find robot_bringup)/gripper/$(arg gripper)_driver.launch"/>
+
+</launch>

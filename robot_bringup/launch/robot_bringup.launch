@@ -1,0 +1,42 @@
+<launch>
+  <arg name="robot" default="moma"/>
+  <arg name="robot_ip" default="192.168.56.100"/>
+  <arg name="gripper" default="none"/> 
+  <!-- gripper can be: ag, drh, ep, none -->
+  <!-- ag95, dorahand, epick -->
+
+
+  <!-- start the robot -->
+  <include file="$(find robot_bringup)/launch/robot_upload.launch">
+    <arg name="gripper" value="$(arg gripper)"/>
+  </include>
+
+  <!-- Subscribe joint states and publish transformation of frames. -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"/>
+
+  <!-- Launch all drivers. -->
+  <include file="$(find moma_socketcan)/launch/moma_socketcan.launch"/>
+  <include file="$(find moma_lifter)/launch/moma_lifter.launch"/>
+  <include file="$(find moma_arm)/launch/moma_arm.launch">
+    <arg name="robot_ip" value="$(arg robot_ip)"/>
+  </include>
+
+
+  <!-- moveit -->
+  <include file="$(find robot_bringup)/moveit/launch/robot_moveit_config.launch">
+    <arg name="gripper" value="$(arg gripper)"/>
+  </include>
+
+
+  <!-- camera -->
+
+  <!-- <node pkg="tf" type="static_transform_publisher" name="base_link_to_kinect" 
+    args="-0.738980810816 -0.256530667686 0.555719402787
+-0.0908151571972 0.226492905233 0.393238984259 0.886463012404 /base_link /camera_base 100" /> -->
+
+  <!-- <include file="$(find kinect2_bridge)/launch/kinect2_bridge.launch"/> -->
+  <!-- <node name="kinect2_bridge" pkg="kinect2_bridge" type="kinect2_bridge"/> -->
+
+  <!-- /kinect2_link -->
+
+</launch>

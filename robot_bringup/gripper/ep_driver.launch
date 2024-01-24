@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<launch>
+  <include file="$(find robotiq_vacuum_grippers_control)/launch/robotiq_vacuum_grippers_driver.launch"/>
+</launch>
