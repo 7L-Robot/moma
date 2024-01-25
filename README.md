@@ -28,6 +28,10 @@
 
     roslaunch robot_bringup viz.launch
 
+要注意的是，当前的urdf文件中，我们机器人末端的姿态都是Z轴朝下的，所以如果你想提供末端姿态的时候，记得确保方向是对的。
+
+![viz](./robot_bringup/viz)
+
 ### 代码控制
 
 TODO
