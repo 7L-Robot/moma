@@ -602,13 +602,13 @@
         <!-- <cylinder length="0.03" radius="0.02"/> -->
   </link>
 
-  <joint name="vacuum_link-epick_2_joint" type="fixed">
+  <joint name="gripper_ee_link-epick_2_joint" type="fixed">
     <origin rpy="0 0 0" xyz="0 0 0.04"/>
     <parent link="epick_2_link"/>
-    <child link="vacuum_link"/>
+    <child link="gripper_ee_link"/>
   </joint>
 
-  <link name="vacuum_link">
+  <link name="gripper_ee_link">
     <visual>
       <geometry>
         <cylinder length="0.005" radius="0.02"/>
