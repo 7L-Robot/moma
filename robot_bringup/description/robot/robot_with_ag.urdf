@@ -509,7 +509,7 @@
   <!-- ========== Add ag95 start ========== -->
 
   <joint name="ag_hand_link-tool0_fixed_joint" type="fixed">
-    <origin rpy="0 0 1.570796325" xyz="0 0 0"/>
+    <origin rpy="0 0 0" xyz="0 0 0"/>
     <parent link="tool0"/>
     <child link="ag_hand_link"/>
   </joint>
@@ -561,6 +561,14 @@
     </collision>
   </link>
 
+
+  <joint name="ag_hand_ee_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0 0 0.15"/>
+    <parent link="ag_hand_link"/>
+    <child link="gripper_ee_link"/>
+  </joint>
+
+  <link name="gripper_ee_link"></link>
 
   <!-- ========== Add ag95 over ========== -->
 
