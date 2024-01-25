@@ -515,12 +515,12 @@
 
 
   <joint name="last_joint" type="fixed">
-    <origin rpy="0 0 0" xyz="0.21 0 0.04"/>
+    <origin rpy="1.570796325 0 1.570796325" xyz="0.21 0 0.04"/>
     <parent link="dh_hand_link"/>
-    <child link="end_link"/>
+    <child link="gripper_ee_link"/>
   </joint>
 
-  <link name="end_link">
+  <link name="gripper_ee_link">
   </link>
 
   <link name="dh_hand_link">
