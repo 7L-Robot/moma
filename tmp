@@ -1,0 +1,351 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+import rospy
+from shape_msgs.msg import SolidPrimitive
+from moveit_msgs.msg import PositionConstraint, Constraints
+from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
+from transformer import Transformer
+import moveit_commander
+
+import numpy as np
+from scipy.spatial.transform import Rotation
+
+from gripper import Gripper
+
+
+class MomaController:
+    def __init__(self, gripper_name='none'):
+
+        self.arm = moveit_commander.MoveGroupCommander("arm")
+        self.arm.set_goal_joint_tolerance(0.001)
+
+        # import IPython
+        # IPython.embed()
+        
+        self.planning_scene = moveit_commander.PlanningSceneInterface()
+        
+        self.joint_names = ["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
+               "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"]
+        
+        self.attach_obj = [] # self.planning_scene.getKnownCollisionObjects()
+
+        self.normal_joints = [2.3014593264724645, -2.123060492926127, 1.6633623457418274, -1.1117438516887856, -1.5706706360315348, np.pi/3]
+        # self.normal_joints = [1.6177513636630703, -1.6590863233684408, 1.6918298141969084, -1.5943267291396364, -1.5455957186868545, 1.4532930989027835]
+        self.trans = Transformer()
+
+        self.gripper_frame = 'tool0'
+        
+        if gripper_name != 'none':
+            self.gripper_frame = 'gripper_ee_link'
+        
+        self.base_frame = 'base_link'
+        self.arm.set_pose_reference_frame(self.base_frame)
+
+        # import IPython
+        # IPython.embed()
+
+        self.gripper = Gripper(gripper_name) 
+
+        self.arm.set_planner_id('RRTConnectkConfigDefault')
+
+    def add_collision(self, box_name, size, pos_xyz, quat_xyzw=[0,0,0,1], link_name=None ):
+        
+        pose = Pose(Point( pos_xyz[0], pos_xyz[1], pos_xyz[2] ), Quaternion( quat_xyzw[0], quat_xyzw[1], quat_xyzw[2], quat_xyzw[3] ))
+        
+        ps = PoseStamped()
+
+        if link_name is None:
+            link_name = self.base_frame
+
+        ps.header.frame_id = link_name
+        ps.pose = pose
+
+        self.planning_scene.remove_world_object(box_name)
+        self.planning_scene.add_box(box_name, pose=ps, size=size )
+        
+    def attach_box(self, box_name, size, pos_xyz, quat_xyzw=[0,0,0,1], link_name=None):
+
+        if link_name is None:
+            link_name = self.gripper_frame
+
+        pose = Pose(Point( pos_xyz[0], pos_xyz[1], pos_xyz[2] ), Quaternion( quat_xyzw[0], quat_xyzw[1], quat_xyzw[2], quat_xyzw[3] ))
+        ps = PoseStamped()
+        ps.pose = pose
+
+        self.planning_scene.attach_box( link_name, box_name, ps, size=size, touch_links=[] )
+
+    def release_attached(self, box_name = None, link_name=None):
+        if link_name is None:
+            link_name = self.gripper_frame
+
+        if box_name is not None:
+            self.planning_scene.remove_attached_object(link_name, box_name )
+        else:
+            # for box_name in self.planning_scene.get_attached_objects():
+            # it will move to world_object set
+            self.planning_scene.remove_attached_object(link_name, box_name )
+
+    def remove_collision(self, name=None):
+        self.planning_scene.remove_world_object(name)
+
+    def get_joints(self):
+        return self.arm.get_current_joint_values()
+
+    def get_end_pose(self):
+        pos, quat = self.trans.transform_of_frames( self.gripper_frame, self.base_frame)
+        return pos, quat
+
+    def move_to_joints(self, joints_value):
+        if rospy.is_shutdown():
+            return False
+
+        # Plans the joints in joint_names to angles in pose
+        self.arm.set_joint_value_target( joints_value )
+        result = self.arm.go()
+        rospy.sleep(1)
+        
+        if result:
+            rospy.loginfo("pose Success!")
+        else:
+            rospy.logerr("MoveIt! failure no result returned.")
+        return result
+
+    def move_to_pose(self, point_xyz=None, quat_xyzw=None, offset=0, waypoint_num=8, offset_frame='local'):
+        '''
+        Args:
+            point_xyz: list[float]
+            quat_xyzw: list[float]
+            offset: float
+            waypoint_num: int
+            offset_frame: str
+                'global'
+                'local'
+        '''
+        # [ 0.70704745, -0.7067022,  0, 0]
+
+        current_xyz, current_xyzw = self.get_end_pose()
+
+        if quat_xyzw is None:
+            quat_xyzw = current_xyzw
+
+        if offset != 0:
+            if offset_frame == 'local':
+                mat = Rotation.from_quat(quat_xyzw).as_dcm()
+                forward_dir = mat[:,2][:3]
+                forward_dir = forward_dir / np.linalg.norm(forward_dir)
+
+            else:
+                forward_dir = np.array([0,0,1])
+
+            if point_xyz is None:
+                target_xyz = forward_dir * offset + current_xyz
+
+                middle_poses = np.linspace( current_xyz, target_xyz, int(waypoint_num) )
+                
+            else:
+                offset_xyz = forward_dir * offset + point_xyz
+                middle_poses = np.linspace( offset_xyz, point_xyz, int(waypoint_num) )
+                
+            waypoints = [ self.trans.to_pose(p, quat_xyzw) for p in middle_poses ]         
+        else:
+            waypoints = [ self.trans.to_pose(point_xyz, quat_xyzw) ]
+
+        # self.trans.send_frame_pose(offset_pos, quat_xyzw, 'test',  'base_footprint')
+
+        plan, fraction = self.arm.compute_cartesian_path(
+                                    waypoints,   # waypoints to follow
+                                    0.01,        # eef_step
+                                    0.0)        # jump_threshold
+
+        if len(plan.joint_trajectory.points) > 0:
+            ret = self.arm.execute(plan)
+            rospy.sleep(1)
+            return ret
+        else:
+            rospy.logerr("MoveIt! failure no result returned.")
+            return False
+
+    def init_pose(self):
+        self.move_to_joints(self.normal_joints)
+
+    def plan_target(self, point_xyz, quat_xyzw):
+        pose = Pose(
+            Point(point_xyz[0], point_xyz[1], point_xyz[2]),  # offset
+            Quaternion(quat_xyzw[0], quat_xyzw[1], quat_xyzw[2], quat_xyzw[3]))
+
+        self.arm.set_pose_target(pose)
+        plan = self.arm.plan()
+        return plan
+    
+    def check_valid_target(self, point_xyz, quat_xyzw):
+        plan = self.plan_target(point_xyz, quat_xyzw)
+        return len(plan.joint_trajectory.points) > 0
+
+
+    def add_constraint(self):
+        constraints = Constraints()
+        constraints.name = "Keep gripper horizontal"
+
+        ee_pose = self.arm.get_current_pose()
+
+        ee_pos = ee_pose.pose.position
+        
+        # ee_pos = np.array([ ee_pos.x, ee_pos.y, ee_pos.z ])
+
+        box_pose = Pose()
+        box_pose.position = ee_pose.pose.position
+        box_pose.orientation = Quaternion(0,0,0,1)
+
+        # Create an orientation constraint for the right gripper 
+        position_constraint = PositionConstraint()
+
+        position_constraint.link_name = self.base_frame
+        position_constraint.header = ee_pose.header
+
+        # position_constraint.target_point_offset.x = 0.1
+        # position_constraint.target_point_offset.y = 0.1
+        # position_constraint.target_point_offset.z = 0.0
+        
+        position_constraint.constraint_region.primitives.append(SolidPrimitive(type=SolidPrimitive.SPHERE, dimensions=[1]))
+        position_constraint.constraint_region.primitive_poses.append(box_pose)
+        position_constraint.weight = 1
+
+        # Append the constraint to the list of contraints
+        constraints.position_constraints.append(position_constraint)
+
+
+        # orientation_c = OrientationConstraint()
+        # orientation_c.header = ee_pose.header
+        # orientation_c.link_name = 
+        # orientation_c.orientation = goal_pose.orientation
+        # orientation_c.absolute_x_axis_tolerance = 0.01
+        # orientation_c.absolute_y_axis_tolerance = 0.01
+        # orientation_c.absolute_z_axis_tolerance = 0.01
+        # orientation_c.weight = 1.0
+        # goal_c.orientation_constraints.append(orientation_c)
+
+
+        # Set the path constraints on the right_arm
+        # import IPython
+        # IPython.embed()
+
+        self.arm.set_path_constraints(constraints)
+
+    def clear_constraint(self):
+        self.arm.clear_path_constraints()   
+
+    def default_collision(self):
+        self.release_attached()
+        self.remove_collision()
+
+        self.add_collision('backward', [1, 0.5, 1.6], [ 0.0, -0.7, 0 ] )
+        self.add_collision('floor', [3, 3, 0.1], [ 0, 0, -0.8 ] )
+
+        self.add_collision('cam2', [0.4, 1.8, 1.6 ], [0.8, -0.5, -0.7 + 0.25 + 0.8 ] )
+
+        self.add_collision('container', [0.8, 0.8, 0.4 ], [-0.8, -0.1, -0.44 ] )
+        
+        self.add_collision('cam', [0.8, 0.8, 0.2 ], [-0.8, -0.1, 0.8 ] )
+
+        self.add_collision('platform', [1.6, 0.8, 0.8 ], [0, 0.7, -0.63 ] )
+
+        self.add_collision('top', [0.8, 0.8, 0.2], [ 0, 0, 0.9 ] )
+
+        self.add_collision('coli1', [0.2, 0.05, 0.05], [ 0, 0.15,  -0.10 ] )
+        self.add_collision('coli2', [0.1, 0.1, 0.05], [ 0.25, 0.2, 0.10 ] )
+        
+        self.add_collision('coli3_+', [0.05, 0.4, 0.05], [ 0.2, -0.2, 0.05 ] )
+        self.add_collision('coli4_+', [0.05, 0.4, 0.05], [ -0.3, -0.2, 0.05 ] )
+    
+    def gripper_open(self):
+        self.gripper.open()
+    
+    def gripper_close(self):
+        self.gripper.close()
+
+    def stop(self):
+        self.gripper.stop()
+
+if __name__ == '__main__':
+    
+    rospy.init_node("manage_fetch_robot")
+    robot = MomaController(gripper_name='ep')
+
+    # from kinect import Camera
+    # cam_top = Camera(topic_prefix='k4a2')
+    # rgb, dep = cam_top.take_photo()
+    # cam_intrinsics = np.array(cam_top.camera_intrinsics).reshape(3,3)
+
+    # np.save("./images/dep", dep)
+    # np.save("./images/rgb", rgb)
+    # np.save("./images/ins", cam_intrinsics)
+
+    picks = [
+        [1.39286188015804, -1.2133153157928858, 1.899097750925387, -2.2732907980700787, -1.5421342910388338, 1.0708602794835338],
+        [1.8276607897419408, -1.1823722835759685, 1.8506843585217378, -2.28707150622627, -1.5465508014907297, 2.0601219969168234],
+        [1.6359058281485068, -0.9598139395415941, 1.5957625480187971, -2.1798564956605215, -1.5525628676781462, 2.184058932052067],
+    ]
+
+    places = [
+        [2.6721567134780413, -1.1160711475963756, 1.5976077671169575, -2.038918763042222, -1.5747153718584004, 1.1394020045303535],
+        [3.057436083503735, -0.8181283217870918, 1.0064724705032742, -1.781224839120469, -1.5516640508102046, 1.5544831961920154],
+        [3.0591493099466844, -1.1483745331507493, 1.6129083050876405, -2.0549422349999773, -1.5953294850559328, 3.0742014142756386],
+    ]
+
+    tmp = [2.6200194868380007, -1.5360268180572227, 1.6683794663973108, -1.819271972856514, -1.4903640573157206, 1.1496240570218625]
+    tmp = [2.690394773524831, -1.6147648822407543, 1.5881473049281132, -1.5720643535854455, -1.586742931721557, 2.7064704584757466]
+
+    # while True:
+    #     a = raw_input('enter: ')
+    #     if a == 'q': break
+    #     print(robot.get_joints())
+
+    robot.default_collision()
+    robot.init_pose()
+
+    inver = False
+
+    for i in range(3):
+        # if i != 2: continue
+
+        a = raw_input('enter: ')
+        if a == 'q': break
+
+        pick = picks[i]
+        place = places[i]
+        
+        if inver:
+            pick = places[i]
+            place = picks[i]
+        
+        robot.move_to_joints(pick)
+        if i == 2 and not inver:
+            robot.move_to_pose(offset=0.16, offset_frame='local')
+        else:
+            robot.move_to_pose(offset=0.15, offset_frame='local')
+        robot.gripper_open()
+        robot.move_to_pose(offset=-0.15, offset_frame='local')
+
+        robot.move_to_joints(tmp)
+        # rospy.sleep(1)
+        
+        robot.move_to_joints(place)
+        robot.move_to_pose(offset=0.15, offset_frame='local')
+        robot.gripper_close()
+        robot.move_to_pose(offset=-0.15, offset_frame='local')
+
+        # print(robot.get_joints())
+
+        robot.init_pose()
+    
+
+    # robot.gripper_close()
+
+    # target_pos = np.array([-0.1, 0.3000, 0.455])
+    # quat_xyzw=[ 0.70704745, -0.7067022,  0, 0]
+    # robot.move_to_pose(target_pos, quat_xyzw)
+
+    # robot.gripper_open()
+
+    robot.stop()
