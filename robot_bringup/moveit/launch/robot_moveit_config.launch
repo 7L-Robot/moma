@@ -40,7 +40,7 @@
   <node pkg="tf" type="static_transform_publisher" name="virtual_joint_broadcaster_0" args="0 0 0 0 0 0 map base_footprint 100" /> 
 
   <!-- Planning Functionality -->
-  <include file="$(find robot_bringup)/moveit/xml/ompl_planning_pipeline.launch.xml" />
+  <include ns="move_group" file="$(find robot_bringup)/moveit/xml/ompl_planning_pipeline.launch.xml" />
 
 
 
